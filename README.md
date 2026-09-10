@@ -1,7 +1,6 @@
 # Volt-Typhoon-LOLBin-Detection-Engineering Lab
 Detection engineering lab emulating Volt Typhoon LOLBin techniques (netsh, schtasks, ntdsutil) — SIGMA rules, Wazuh PCRE2 detections, and OpenSearch SIEM visibility, with iterative false-positive tuning documented.
 
-# Project Jafar: End-to-End Threat Detection Engineering for Volt Typhoon Living-off-the-Land (LotL) Techniques
 
 ---
 
