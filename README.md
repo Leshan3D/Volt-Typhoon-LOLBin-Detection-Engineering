@@ -1,6 +1,6 @@
 # Volt-Typhoon-LOLBin-Detection-Engineering Lab
-Detection engineering lab emulating Volt Typhoon LOLBin techniques (netsh, schtasks, ntdsutil) — SIGMA rules, Wazuh PCRE2 detections, and OpenSearch SIEM visibility, with iterative false-positive tuning documented.
 
+Detection engineering lab emulating Volt Typhoon LOLBin techniques (netsh, schtasks, ntdsutil) — SIGMA rules, Wazuh PCRE2 detections, and OpenSearch SIEM visibility, with iterative false-positive tuning documented.
 
 ---
 
@@ -16,7 +16,7 @@ Modern state-sponsored adversaries — exemplified by **Volt Typhoon** — have 
 
 This project documents a threat detection engineering lifecycle: emulating Volt Typhoon TTPs in a controlled lab, authoring and iteratively tightening SIGMA/Wazuh PCRE2 correlation rules, and building an OpenSearch visualization layer.
 
-**Status note:** these are first-pass detection rules, tuned through several review iterations (documented in Section 5), not yet validated against production-scale traffic. See Section 7 for open items before these should be considered production-ready.
+> **Status note:** these are first-pass detection rules, tuned through several review iterations (documented in Section 5), not yet validated against production-scale traffic. See Section 7 for open items before these should be considered production-ready.
 
 ---
 
@@ -50,7 +50,7 @@ Three phases of Volt Typhoon's lifecycle were emulated: C2 tunneling, persistenc
 | **T1053.005** | Scheduled Task/Job | `schtasks.exe` | Persistent execution |
 | **T1003.003** | OS Credential Dumping: NTDS | `ntdsutil` (emulated via PowerShell `Write-Output`) | AD database extraction |
 
-> Note: the NTDSutil step was emulated by echoing the target command string via PowerShell rather than invoking `ntdsutil.exe` directly, to keep the test non-destructive. This validates command-line detection logic but does not confirm behavior against the real binary's actual logged output — flagged as an open item in Section 7.
+> **Note on the NTDSutil emulation:** a genuine IFM extraction requires a live Domain Controller running AD DS. Standing up a full DC was out of scope for this lab, so the command was emulated by echoing the target string via PowerShell `Write-Output` — this validates the detection logic against the expected command-line structure without requiring AD infrastructure. It does not confirm the exact logged output of a real `ntdsutil.exe` invocation, which is flagged as an open item in Section 7.
 
 ### Execution Vectors (PowerShell Emulation Scripts)
 
@@ -69,71 +69,47 @@ powershell.exe -NoProfile -Command "Write-Output 'ntdsutil ac i ntds ifm create 
 
 <img width="1600" height="858" alt="image" src="https://github.com/user-attachments/assets/517b8e67-2c43-425a-8dfb-f4856d7c595e" />
 
-Wazuh server is blind to the LoTl as expected because in a standard production environment, an analyst looking at a queue of hundreds or thousands of Level 3 events per hour will never manually inspect them. This background noise is where Volt Typhoon hides.
+Wazuh is blind to this by design: in a standard production environment, an analyst looking at a queue of hundreds or thousands of Level 3 events per hour will never manually inspect them. This background noise is where Volt Typhoon hides.
 
-Manually inspecting the lower rules levels shows them lying there:
+Manually inspecting the lower rule levels shows them sitting there in plain sight:
+
+```
 data.win.eventdata.commandLine: portproxy OR data.win.eventdata.commandLine: v4tov4
-
-
+```
 
 <img width="1600" height="866" alt="image" src="https://github.com/user-attachments/assets/1a1fc433-1202-46e5-b28e-94f2ecb4844c" />
 
+### 1. The Proxy Setup (C2 Tunneling)
 
-1. The Proxy Setup (C2 Tunneling)
-Finds the local port proxy creation attempt. SOCs miss this because netsh.exe runs daily for standard network troubleshooting.
-
+Finds the local port proxy creation attempt. SOCs miss this because `netsh.exe` runs daily for standard network troubleshooting.
 
 <img width="1600" height="856" alt="image" src="https://github.com/user-attachments/assets/f8cafa89-6544-4e18-acd9-6ad33bb14657" />
 
-There it lies, the SOC won't see it drowning in "normal" traffic
+There it lies — the SOC won't see it, drowning in "normal" traffic.
 
+### 2. The Persistence Trigger
 
+Finds the creation of the `VaultMaintenance` scheduled task. SOCs miss this because software installers constantly register background scheduled tasks.
 
-
-
-
-2. The Persistence Trigger
-Finds the creation of the VaultMaintenance scheduled task. SOCs miss this because software installers constantly register background scheduled tasks.
-
+```
 data.win.eventdata.commandLine: schtasks AND data.win.eventdata.commandLine: VaultMaintenance
-
+```
 
 <img width="1600" height="873" alt="image" src="https://github.com/user-attachments/assets/30abc41e-f6af-4e5c-9819-bae23d9032b9" />
 
-
-
-
-
 <img width="1600" height="837" alt="image" src="https://github.com/user-attachments/assets/4e2ebb5e-31f8-4da9-be6a-c20ffbff785d" />
 
+### 3. The Active Directory Credential Snapshot
 
+Finds the ntdsutil execution and IFM creation request. SOCs miss this because `ntdsutil` is signed by Microsoft and classified as a standard system management tool.
 
-
-
-
-
-
-3. The Active Directory Credential Snapshot
-Finds the ntdsutil execution and IFM creation request. SOCs miss this because ntdsutil is signed by Microsoft and classified as a standard system management tool.
-
+```
 data.win.eventdata.commandLine: ntdsutil OR data.win.eventdata.commandLine: ifm
-
+```
 
 <img width="1600" height="860" alt="image" src="https://github.com/user-attachments/assets/e74c0dc4-bef9-4f6f-9da3-5c8ccf2d91c2" />
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+---
 
 ## 4. Detections-as-Code
 
@@ -309,18 +285,6 @@ tags:
 
 ---
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## 5. Engineering & Troubleshooting Journey
 
 ### Enabling Raw JSON Log Archiving (`logall_json`)
@@ -356,9 +320,7 @@ A custom SOC dashboard was built in OpenSearch Dashboards using hierarchical spl
 
 <img width="1600" height="834" alt="image" src="https://github.com/user-attachments/assets/0ad168bb-dbc9-444d-b57c-daac54dd2359" />
 
-
 <img width="1600" height="834" alt="image" src="https://github.com/user-attachments/assets/8ca55ff4-af02-4bcd-8e2d-e9989cfb76f8" />
-
 
 ---
 
